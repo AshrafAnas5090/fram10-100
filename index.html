@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحليل عملات الفيوتشر الاحترافية - شريكي</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; background: #0b0e14; }
+        .row-item { transition: all 0.2s ease; }
+        .row-item:hover { background: #151b26; }
+    </style>
+</head>
+<body class="text-slate-200 min-h-screen p-4 md:p-6">
+
+    <div class="max-w-4xl mx-auto">
+        <!-- الهيدر والتحكم -->
+        <header class="bg-slate-900/90 backdrop-blur-md border border-slate-800 p-4 rounded-2xl mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-xl font-black text-amber-500 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line"></i> ماسح شموع الفيوتشر الشامل
+                </h1>
+                <p id="subTitle" class="text-xs text-slate-400 mt-0.5">جاري جلب وتحليل عملات الفيوتشر...</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- اختيار عدد الشموع (جديد) -->
+                <div class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span class="text-xs text-slate-400">الشموع:</span>
+                    <select id="limitSelect" onchange="initDashboard()" class="bg-transparent text-amber-400 font-bold text-sm focus:outline-none cursor-pointer">
+                        <option value="10" class="bg-slate-900">10 شمعات</option>
+                        <option value="25" selected class="bg-slate-900">25 شمعة</option>
+                        <option value="50" class="bg-slate-900">50 شمعة</option>
+                        <option value="100" class="bg-slate-900">100 شمعة</option>
+                    </select>
+                </div>
+
+                <!-- قائمة الفريمات الزمنية -->
+                <div class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span class="text-xs text-slate-400">الفريم:</span>
+                    <select id="timeframeSelect" onchange="initDashboard()" class="bg-transparent text-emerald-400 font-bold text-sm focus:outline-none cursor-pointer">
+                        <option value="1m" class="bg-slate-900">1 دقيقة</option>
+                        <option value="5m" class="bg-slate-900">5 دقائق</option>
+                        <option value="15m" selected class="bg-slate-900">15 دقيقة</option>
+                        <option value="1h" class="bg-slate-900">1 ساعة</option>
+                        <option value="4h" class="bg-slate-900">4 ساعات</option>
+                        <option value="1d" class="bg-slate-900">1 يوم</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <!-- شريط التقدم أثناء تحميل العملات للحماية من الحظر -->
+        <div id="progressContainer" class="bg-slate-900 border border-slate-800 p-4 rounded-2xl mb-4 hidden">
+            <div class="flex justify-between text-xs text-slate-400 mb-2">
+                <span id="progressText">جاري فحص العملات...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+                <div id="progressBar" class="bg-amber-500 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- رؤوس الأعمدة مع أسهم الترتيب -->
+        <div class="grid grid-cols-4 px-4 py-3 text-xs font-bold text-slate-400 border-b border-slate-800 mb-2 bg-slate-900/50 rounded-xl">
+            <div>اسم العملة</div>
+            <div class="text-center">السعر الحالي</div>
+            <div class="text-center cursor-pointer hover:text-amber-400 transition select-none" onclick="sortData('green')">
+                عدد الصاعد <i id="sortGreenIcon" class="fa-solid fa-sort ml-1"></i>
+            </div>
+            <div class="text-left cursor-pointer hover:text-amber-400 transition select-none" onclick="sortData('red')">
+                عدد الهابط <i id="sortRedIcon" class="fa-solid fa-sort ml-1"></i>
+            </div>
+        </div>
+
+        <!-- قائمة العملات -->
+        <div id="cryptoList" class="flex flex-col gap-2">
+            <div class="text-center py-12 text-slate-500 animate-pulse">
+                <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-amber-500"></i>
+                <p class="text-sm font-bold">جاري الاتصال بمنصة بينانس لجلب كافة عملات الفيوتشر...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allSymbols = [];
+        let marketData = [];
+        let currentSort = { field: null, direction: 'desc' };
+
+        async function initDashboard() {
+            const timeframe = document.getElementById('timeframeSelect').value;
+            const limit = document.getElementById('limitSelect').value;
+            const container = document.getElementById('cryptoList');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const progressPercent = document.getElementById('progressPercent');
+
+            container.innerHTML = `
+                <div class="text-center py-12 text-slate-500 animate-pulse">
+                    <i class="fa-solid fa-spinner fa-spin text-3xl mb-3 text-amber-500"></i>
+                    <p class="text-sm font-bold">جاري تحديث البيانات بناءً على الإعدادات الجديدة...</p>
+                </div>
+            `;
+
+            try {
+                // 1. جلب القائمة الكاملة لعملات الفيوتشر مرة واحدة فقط
+                if (allSymbols.length === 0) {
+                    const exchangeRes = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo');
+                    const exchangeData = await exchangeRes.json();
+                    allSymbols = exchangeData.symbols
+                        .filter(s => s.quoteAsset === 'USDT' && s.status === 'TRADING')
+                        .map(s => s.symbol);
+                }
+
+                progressContainer.classList.remove('hidden');
+
+                // 2. جلب الأسعار اللحظية لجميع العملات
+                const tickerRes = await fetch('https://fapi.binance.com/fapi/v1/ticker/price');
+                const tickers = await tickerRes.json();
+                const priceMap = {};
+                tickers.forEach(t => priceMap[t.symbol] = parseFloat(t.price));
+
+                marketData = [];
+                const batchSize = 10; // دفعات آمنة تماماً لحظر الـ IP
+
+                for (let i = 0; i < allSymbols.length; i += batchSize) {
+                    const batch = allSymbols.slice(i, i + batchSize);
+                    
+                    const batchPromises = batch.map(async (symbol) => {
+                        try {
+                            const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${timeframe}&limit=${limit}`);
+                            const klines = await res.json();
+                            
+                            let greenCount = 0;
+                            let redCount = 0;
+
+                            klines.forEach(candle => {
+                                const open = parseFloat(candle[1]);
+                                const close = parseFloat(candle[4]);
+                                if (close >= open) greenCount++;
+                                else redCount++;
+                            });
+
+                            return {
+                                symbol,
+                                price: priceMap[symbol] || 0,
+                                greenCount,
+                                redCount,
+                                success: true
+                            };
+                        } catch (e) {
+                            return { symbol, success: false };
+                        }
+                    });
+
+                    const results = await Promise.all(batchPromises);
+                    marketData.push(...results.filter(r => r.success));
+
+                    // تحديث شريط التقدم
+                    let progress = Math.min(100, Math.round(((i + batch.length) / allSymbols.length) * 100));
+                    progressBar.style.width = `${progress}%`;
+                    progressPercent.innerText = `${progress}%`;
+                    progressText.innerText = `تم فحص ${Math.min(i + batch.length, allSymbols.length)} من ${allSymbols.length} عملة`;
+
+                    // تأخير أمني دقيق لحماية الـ IP
+                    await new Promise(resolve => setTimeout(resolve, 60));
+                }
+
+                progressContainer.classList.add('hidden');
+                
+                // إعادة تطبيق الفرز إذا كان مفَعلاً مسبقاً
+                if (currentSort.field) {
+                    applySorting();
+                } else {
+                    renderList();
+                }
+
+            } catch (error) {
+                console.error("خطأ في الاتصال:", error);
+                container.innerHTML = `<div class="text-center py-10 text-rose-500 font-bold">حدث خطأ أثناء جلب البيانات. يرجى إعادة المحاولة.</div>`;
+            }
+        }
+
+        function sortData(field) {
+            if (currentSort.field === field) {
+                currentSort.direction = currentSort.direction === 'desc' ? 'asc' : 'desc';
+            } else {
+                currentSort.field = field;
+                currentSort.direction = 'desc';
+            }
+            applySorting();
+        }
+
+        function applySorting() {
+            const field = currentSort.field;
+            
+            // تحديث الأيقونات البصرية
+            document.getElementById('sortGreenIcon').className = "fa-solid fa-sort ml-1";
+            document.getElementById('sortRedIcon').className = "fa-solid fa-sort ml-1";
+
+            if (field) {
+                const iconId = field === 'green' ? 'sortGreenIcon' : 'sortRedIcon';
+                document.getElementById(iconId).className = currentSort.direction === 'desc' ? "fa-solid fa-arrow-down-long ml-1 text-amber-400" : "fa-solid fa-arrow-up-long ml-1 text-amber-400";
+
+                marketData.sort((a, b) => {
+                    let valA = a[field + 'Count'];
+                    let valB = b[field + 'Count'];
+                    return currentSort.direction === 'desc' ? valB - valA : valA - valB;
+                });
+            }
+            renderList();
+        }
+
+        function renderList() {
+            const container = document.getElementById('cryptoList');
+            const limitVal = document.getElementById('limitSelect').value;
+            document.getElementById('subTitle').innerText = `إجمالي عملات الفيوتشر النشطة: ${marketData.length} عملة (بناءً على آخر ${limitVal} شمعة)`;
+
+            container.innerHTML = marketData.map(item => {
+                let priceFormatted = item.price >= 1 ? item.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : item.price.toFixed(6);
+
+                return `
+                    <div class="row-item grid grid-cols-4 items-center bg-slate-900 border border-slate-800/80 px-4 py-3 rounded-xl shadow-sm">
+                        <!-- اسم العملة -->
+                        <div class="flex items-center gap-2">
+                            <span class="font-black text-sm md:text-base text-slate-100">${item.symbol.replace('USDT', '')}</span>
+                            <span class="text-[10px] text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded">USDT</span>
+                        </div>
+
+                        <!-- السعر -->
+                        <div class="text-center font-bold text-slate-300 text-sm md:text-base">
+                            $${priceFormatted}
+                        </div>
+
+                        <!-- عدد الصاعد -->
+                        <div class="text-center">
+                            <span class="bg-emerald-950/50 border border-emerald-900/40 text-emerald-400 font-bold px-3 py-1 rounded-lg text-sm inline-block min-w-[50px]">
+                                <i class="fa-solid fa-arrow-up text-xs mr-1"></i>${item.greenCount}
+                            </span>
+                        </div>
+
+                        <!-- عدد الهابط -->
+                        <div class="text-left">
+                            <span class="bg-rose-950/50 border border-rose-900/40 text-rose-400 font-bold px-3 py-1 rounded-lg text-sm inline-block min-w-[50px]">
+                                <i class="fa-solid fa-arrow-down text-xs mr-1"></i>${item.redCount}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // التشغيل الأولي
+        initDashboard();
+    </script>
+</body>
+</html>
